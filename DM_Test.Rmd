@@ -1,0 +1,107 @@
+---
+title: "Diebold-Mariano Test"
+author: "Jinze"
+date: "2024-09-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Diebold-Mariano Test
+https://cran.r-project.org/web/packages/AER/AER.pdf
+
+https://www.r-bloggers.com/2017/11/formal-ways-to-compare-forecasting-models-rolling-windows/
+
+# load packages
+```{r}
+#install.packages("AER")
+library(AER)
+data("USMacroSWM")
+library(xts)
+library(plyr)
+library(foreach)
+library(iterators)
+library(melt)
+library(reshape)
+library(ggplot2)
+library(forecast) # for DM Test
+```
+
+```{r}
+## = Load Data = ##
+data("USMacroSWM")
+data = as.xts(USMacroSWM)[ , c("cpi", "production"), ] # use 'xts' package
+data = cbind(diff(log(data[ ,"cpi"])), diff(log(data[ ,"production"])))[-1, ]
+
+## = Prep data with embed = ##
+lag = 4
+X = embed(data, lag + 1)
+X = as.data.frame(X)
+colnames(X) = paste(rep(c("inf", "prod"), lag + 1),
+                    sort(rep(paste("l", 0:lag, sep = ""),2)), sep = "" )
+X$month = months(tail(index(data), nrow(X)))
+head(X)
+```
+
+
+```{r}
+# = Number of windows and window size
+w_size = 300
+n_windows = nrow(X) - 300
+
+# = Rolling Window Loop = #
+forecasts = foreach(i=1:n_windows, .combine = rbind, .packages="foreach") %do%{ # 'do' use "plyr" packages
+
+  # = Select data for the window (in and out-of-sample) = #
+  X_in = X[i:(w_size + i - 1), ] # = change to X[1:(w_size + i - 1), ] for expanding window
+  X_out = X[w_size + i, ]
+
+  # = Regression Model = #
+  m1 = lm(infl0 ~ . - prodl0, data = X_in)
+  f1 = predict(m1, X_out)
+
+  # = Random Walk = #
+  f2 = tail(X_in$infl0, 1)
+
+  return(c(f1, f2))
+}
+```
+
+
+```{r}
+# = Calculate and plot errors = #
+e1 = tail(X[ ,"infl0"], nrow(forecasts)) - forecasts[ ,1]
+e2 = tail(X[ ,"infl0"], nrow(forecasts)) - forecasts[ ,2]
+df = data.frame("date"=tail(as.Date(index(data)), n_windows), "Regression" = e1, "RandomWalk" = e2)
+mdf = melt(df,id.vars = "date")
+# ggplot2(data = mdf) + geom_line(aes(x = date, y = value, linetype = variable, color = variable))
+
+mdf |>  ggplot(aes(x = date, y = value, colour = variable)) +
+    geom_line() 
+```
+
+```{r}
+# = RMSE = #
+(rmse1 = 1000 * sqrt(mean(e1 ^ 2)))
+
+## [1] 2.400037
+
+(rmse2 = 1000 * sqrt(mean(e2 ^ 2)))
+
+## [1] 2.62445
+
+# = DM test = #
+(dm = dm.test(e1, e2))
+
+##
+##  Diebold-Mariano Test
+##
+## data:  e1e2
+## DM = -1.977, Forecast horizon = 1, Loss function power = 2,
+## p-value = 0.04874
+## alternative hypothesis: two.sided
+```
+
+

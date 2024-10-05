@@ -1,0 +1,361 @@
+---
+title: "EF3451_HW1 (chapter2)"
+author: "Jinze"
+date: "2024-09-17"
+output:
+  html_document: default
+  pdf_document: default
+---
+## exercise: (https://otexts.com/fpp3/graphics-exercises.html)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Question 1
+
+
+>(Q1 in Section 2.10) Explore the following four time series: `Bricks` from `aus_production`, `Lynx` from `pelt`, `Close` from `gafa_stock`, `Demand` from `vic_elec`.
+>
+>   + Use `?` (or `help()`) to find out about the data in each series.
+>   + What is the time interval of each series?
+>   + Use `autoplot()` to produce a time plot of each series.
+>   + For the last plot, modify the axis labels and title.
+
+## import `fpp3` to get the data and `tsibble` to deal with it.
+
+```{r}
+# install.packages('tsibble')
+library(tsibble)
+library(fpp3)
+```
+## Bricks
+
+```{r}
+aus_production
+```
+
+```{r}
+??Bricks
+```
+
+The observations are quarterly.
+
+
+
+```{r}
+# aus_production: The dataset containing production data, which contains Bricks as one of the columns.
+
+# |>: The pipe operator that passes the dataset to the next function.
+
+# autoplot(Bricks): autoplot is a  function that automatically creates a plot of the Bricks variable from the aus_production dataset.
+
+aus_production |> autoplot(Bricks) 
+```
+
+You can also use `autoplot` in the following way, which generates the same plot as above.
+```
+autoplot(aus_production,  Bricks)
+```
+
+An upward trend is apparent until 1980, after which the number of clay bricks being produced starts to decline. A seasonal pattern is evident in this data. Some sharp drops in some quarters can also be seen.
+
+## Lynx
+
+```{r}
+??pelt
+```
+
+Observations are made once per year.
+
+```{r}
+pelt |> autoplot(Lynx)
+```
+
+Canadian lynx trappings are cyclic, as the extent of peak trappings is unpredictable, and the spacing between the peaks is irregular but approximately 10 years.
+
+## Close
+
+```{r}
+gafa_stock
+```
+
+Interval is daily. Looking closer at the data, we can see that the index is a Date variable. It also appears that observations occur only on trading days, creating lots of implicit missing values.
+
+```{r}
+gafa_stock |>
+  autoplot(Close)
+```
+
+Stock prices for these technology stocks have risen for most of the series, until mid-late 2018.
+
+The four stocks are on different scales, so they are not directly comparable. A plot with faceting would be better.
+
+```{r}
+# ggplot: ggplot is a function from the ggplot2 package, which is used to create complex and customizable plots in R.
+
+
+# aes(x=Date, y=Close, group=Symbol): This sets up the aesthetics (aes) for the plot.
+
+# x=Date: Specifies that the Date variable should be used for the x-axis.
+# y=Close: Specifies that the Close variable (closing price) should be used for the y-axis.
+# group=Symbol: Groups the data by the Symbol variable, which is necessary for creating separate lines for each stock symbol.
+
+
+# geom_line(aes(col=Symbol)): This specifies that the (col) color of the lines should be determined by the Symbol variable. Each stock symbol will have a different color. What if you do not specify the col and only use "geom_line(aes())", try it to see...
+
+
+# facet_grid is a function from ggplot2 that creates a grid of plots, with one plot for each level of a categorical variable.
+
+# Symbol ~ .: This creates a grid of plots where each row corresponds to a different stock symbol. The ~ . part indicates that there should be no columns (just rows).
+# scales='free': This allows each facet (subplot) to have its own scales for the x and y axes, so the scales are not fixed across all facets. This is useful when the data ranges for different symbols are very different.
+
+gafa_stock |>
+  ggplot(aes(x=Date, y=Close, group=Symbol)) +
+  geom_line(aes(col=Symbol)) +
+  facet_grid(Symbol ~ ., scales='free')
+```
+
+The downturn in the second half of 2018 is now very clear, with Facebook taking a big drop (about 20%) in the middle of the year.
+
+The stocks tend to move roughly together, as you would expect with companies in the same industry.
+
+## Demand
+
+```{r}
+vic_elec
+```
+
+Data is available at 30 minute intervals.
+
+
+```{r}
+vic_elec |>
+  autoplot(Demand)
+```
+
+Appears to have an annual seasonal pattern, where demand is higher during summer and winter. Can't see much detail, so let's zoom in.
+
+```{r}
+# In total, the following code filters the `vic_elec` dataset to include only the data from June 2012 and then creates a time series plot of the electricity demand (Demand) for that month.
+
+# yearmonth(Time): This function converts the Time variable (which is likely a datetime or date object) into a year-month format. For example, 2012-06-15 12:00:00 would be converted to 2012 June.
+
+# yearmonth("2012 June"): This creates a year-month object representing June 2012.
+
+# ==: This is the equality operator, which checks if the year-month of Time is equal to June 2012.
+
+# filter(...): This function filters the vic_elec dataset to include only the rows where the Time variable corresponds to June 2012.
+
+vic_elec |>
+  filter(yearmonth(Time) == yearmonth("2012 June")) |>
+  autoplot(Demand)
+```
+
+Appears to have a daily pattern, where less electricity is used overnight. Also appears to have a working day effect (less demand on weekends and holidays).
+
+```{r}
+# Demand/1e3: This scales the Demand variable by dividing it by 1e3 (which is 1000). This is often done to convert the units from, say, megawatts (MW) to gigawatts (GW).
+
+# + labs(...)
+
+# labs is a function from the ggplot2 package that is used to add labels to the plot.
+
+# x = "Date": This sets the label for the x-axis to "Date".
+
+# y = "Demand (GW)": This sets the label for the y-axis to "Demand (GW)", indicating that the y-axis represents electricity demand in gigawatts.
+
+# title = "Half-hourly electricity demand": This sets the title of the plot to "Half-hourly electricity demand".
+
+# subtitle = "Victoria, Australia": This sets the subtitle of the plot to "Victoria, Australia".
+
+vic_elec |> autoplot(Demand/1e3) +
+  labs(
+    x = "Date",
+    y = "Demand (GW)",
+    title = "Half-hourly electricity demand",
+    subtitle = "Victoria, Australia"
+  )
+```
+
+Here the annual seasonality is clear, with high volatility in summer, and peaks in summer and winter. The weekly seasonality is also visible, but the daily seasonality is hidden due to the compression on the horizontal axis.
+
+
+## Question 2
+
+> (Q3 in Section 2.10) Download the file `tute1.csv` from [the book website](http://OTexts.com/fpp3/extrafiles/tute1.csv), open it in Excel (or some other spreadsheet application), and review its contents. You should find four columns of information. Columns B through D each contain a quarterly series, labelled Sales, AdBudget and GDP. `Sales` contains the quarterly sales for a small company over the period 1981-2005. `AdBudget` is the advertising budget and `GDP` is the gross domestic product. All series have been adjusted for inflation.
+
+```{r}
+# Create a temporary file path
+# tempfile() is a function in R that generates a temporary file path. This path points to a file that does not exist in the file system and is typically used for creating and using temporary files during the execution of a program.
+
+temp_filepath <- tempfile()
+
+# Download the file to the temporary file path
+download.file("http://OTexts.com/fpp3/extrafiles/tute1.csv", temp_filepath)
+```
+```{r}
+# You are also allowed to download the file to the specified path by running the following
+# Do not need to create an empty file but have to specify the name and the path of the csv file
+
+# desktop_path <- "/Users/jinze/Desktop/tute1.csv" 
+# download.file("http://OTexts.com/fpp3/extrafiles/tute1.csv", desktop_path)
+
+```
+
+
+```{r}
+library(readr)
+
+# read_csv: is a function from the readr package, which is designed to read CSV (Comma-Separated Values) files into R.
+
+tute1 <- readr::read_csv(temp_filepath)
+print(head(tute1))
+```
+
+
+```{r}
+# mutate is a function from the dplyr package, which is used for data manipulation.
+
+# Quarter = yearquarter(Quarter): This creates a new column or modifies the existing Quarter column by converting it to a yearquarter format. eg. from '1981-03-01' to '1981 Q1'
+
+# as_tsibble(...): This function converts the data frame into a tsibble object, which is a specialized data structure for time series data in R.
+
+mytimeseries <- tute1 |>
+  mutate(Quarter = yearquarter(Quarter)) |>
+  as_tsibble(index = Quarter)
+```
+
+
+```{r}
+
+# pivot_longer(-Quarter, names_to="Key", values_to="Value")
+# pivot_longer is a function from the tidyr package, which is used for reshaping data from wide format to long format.
+
+# -Quarter: This specifies that the Quarter column should be excluded (by '-') from the pivoting process. The remaining columns will be pivoted.
+
+# names_to="Key": This specifies that the column names of the pivoted columns should be stored in a new column named Key.
+
+# values_to="Value": This specifies that the values of the pivoted columns should be stored in a new column named Value.
+
+
+mytimeseries |>
+  pivot_longer(-Quarter, names_to="Key", values_to="Value") |>
+  ggplot(aes(x = Quarter, y = Value, colour = Key)) +
+    geom_line() +
+    facet_grid(vars(Key), scales = "free_y")
+```
+
+
+```{r}
+# See what the data looks like after doing pivot_longer
+mytimseries_pivotlonger = mytimeseries |>
+  pivot_longer(-Quarter, names_to="Key", values_to="Value")
+print(head(mytimseries_pivotlonger))
+```
+
+
+```{r}
+# facet_grid(vars(Key), scales = "free_y")
+
+# facet_grid is a function from ggplot2 that creates a grid of plots, with one plot for each level of a categorical variable.
+
+# vars(Key): This creates a grid of plots where each row corresponds to a different key.
+
+# scales = "free_y": This allows each facet (subplot) to have its own scales for the y-axis, so the scales are not fixed across all facets. This is useful when the data ranges for different keys are very different.
+
+
+# Without faceting:
+mytimeseries |>
+  pivot_longer(-Quarter, names_to="Key", values_to="Value") |>
+  ggplot(aes(x = Quarter, y = Value, colour = Key)) +
+    geom_line()
+```
+
+
+## Question 4
+> (Q10 in Section 2.10) 
+> The `aus_livestock` data contains the monthly total number of pigs slaughtered in Victoria, Australia, from Jul 1972 to Dec 2018. Use `filter()` to extract pig slaughters in Victoria between 1990 and 1995. Use `autoplot` and `ACF` for this data. How do they differ from white noise? If a longer period of data is used, what difference does it make to the ACF?
+
+```{r}
+vic_pigs <- aus_livestock |>
+  filter(Animal == "Pigs", State == "Victoria", between(year(Month), 1990, 1995))
+vic_pigs
+```
+
+
+
+```{r}
+vic_pigs |>
+  autoplot(Count)
+```
+
+Although the values appear to vary erratically between months, a general upward trend is evident between 1990 and 1995. In contrast, a white noise plot does not exhibit any trend.
+
+```{r}
+#|> ACF(Count)
+
+# ACF Function: ACF stands for Autocorrelation Function. It is a statistical tool used to measure the correlation between a time series and its lagged values (i.e., values at previous time steps). The ACF function computes the autocorrelation for different lags.
+
+# Argument Count: The Count argument specifies that the ACF function should be applied to the Count column of the vic_pigs data. This means that the autocorrelation will be calculated for the time series data in the Count column.
+
+vic_pigs |> ACF(Count) |> autoplot()
+```
+
+The first 14 lags are significant, as the ACF slowly decays. This suggests that the data contains a trend. A white noise ACF plot would not usually contain any significant lags. The large spike at lag 12 suggests there is some seasonality in the data.
+
+```{r}
+aus_livestock |>
+  filter(Animal == "Pigs", State == "Victoria") |>
+  ACF(Count) |>
+  autoplot()
+```
+
+The longer series has much larger auto-correlations, plus clear evidence of seasonality at the seasonal lags of $12, 24, \dots$.
+
+
+
+## Question 5
+> (Q11 in Section 2.10) 
+> a. Use the following code to compute the daily changes in Google closing stock prices.
+>
+>      ```r
+>      dgoog <- gafa_stock |>
+>        filter(Symbol == "GOOG", year(Date) >= 2018) |>
+>        mutate(trading_day = row_number()) |>
+>        update_tsibble(index = trading_day, regular = TRUE) |>
+>        mutate(diff = difference(Close))
+>      ```
+>
+> b. Why was it necessary to re-index the tsibble?
+> c. Plot these differences and their ACF.
+> d. Do the changes in the stock prices look like white noise?
+
+```{r}
+# mutate(trading_day = row_number()) The mutate function is used to create or modify columns in the data frame.
+
+# New Column (trading_day): A new column named trading_day is created. 
+# The row_number() function assigns a unique row number to each row, effectively creating a sequence of trading days starting from 1.
+
+# update_tsibble(index = trading_day, regular = TRUE) This function is used for handling time series data in a tidy format.
+
+# Index (trading_day): The index argument specifies that the trading_day column should be used as the index for the time series. This means that the time series will be indexed by the trading day number.
+
+# Regular (TRUE): The regular argument ensures that the time series is regular, meaning that the time intervals between observations are consistent.
+
+
+dgoog <- gafa_stock |>
+  filter(Symbol == "GOOG", year(Date) >= 2018) |>
+  mutate(trading_day = row_number()) |>
+  update_tsibble(index = trading_day, regular = TRUE) |>
+  mutate(diff = difference(Close))
+```
+
+The tsibble needed re-indexing as trading happens irregularly. The new index is based only on trading days.
+
+```{r}
+dgoog |> autoplot(diff)
+dgoog |> ACF(diff, lag_max=100) |> autoplot()
+```
+
+There are some small significant autocorrelations out to lag 24, but nothing after that. Given the probability of a false positive is 5%, these look similar to white noise.
+
