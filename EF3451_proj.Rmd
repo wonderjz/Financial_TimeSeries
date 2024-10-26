@@ -1,0 +1,181 @@
+---
+title: "EF3451_project"
+author: "Jinze"
+date: "2024-10-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Load necessary libraries
+
+```{r}
+library(fpp3)
+library(readr) 
+library(knitr)
+```
+
+
+# load data
+```{r}
+# FRED-MD economics data (https://fredaccount.stlouisfed.org/apikeys)
+# Read a CSV file into a tibble
+combined_data <- readr::read_csv("fredmd_EF3451.csv",show_col_types = FALSE)
+kable(head(combined_data,5)) # use kable function for better formatting in the ouput file
+```
+
+
+
+```{r}
+# Lagging multiple variables
+data_withlag <- combined_data |>
+  mutate(
+    ur = unrate,
+    # take log of some independent variables
+    ln_ip = log(industrial_production),
+    ln_cpi = log(cpi),
+    r = interest_rate,
+    # get variables in the last period and generate new columns
+    ur_1 = lag(ur, order_by = date),
+    ln_ip_1 = lag(ln_ip, order_by = date),
+    ln_cpi_1 = lag(ln_cpi, order_by = date),
+    r_1 = lag(r, order_by = date),
+    # transform daily into monthly format
+    date = yearmonth(date)                    
+  )
+
+# print the first 5 rows
+kable(head(data_withlag,5))
+```
+
+
+```{r}
+
+# Create a new tsibble with the lagged variable
+new_tsibble <- data_withlag |>
+  filter(!is.na(ur_1)) |>  # Remove rows with NA values due to lagging
+  as_tsibble(index = date)  # Ensure it remains a tsibble
+
+# Print the first 5 rows of the new tsibble
+kable(head(new_tsibble, 5))
+```
+
+# one step forcasting
+## fit the TSLM model using regression (y_{t} ~ X_{t-1})
+```{r}
+# by slice(1:120), we pick the lagged varibles from 2000-02 to 2010-02 for training
+tslm_model <-new_tsibble |> slice(1:120) |> model(TSLM(ur ~ ur_1 + r_1 + ln_cpi_1))
+kable(report(tslm_model))
+```
+
+
+## use the X_{t} for predicting y_{t+1}
+```{r}
+future_data = new_data(slice(new_tsibble,1:120), 1) |>
+  mutate(
+    ur_1 = new_tsibble$ur_1[121], # ur_1[121] is equal to ur[120], which is X_{t}
+    ln_cpi_1 = new_tsibble$ln_cpi_1[121],
+    r_1 = new_tsibble$r_1[121]
+  )
+
+kable(print(future_data))
+```
+
+
+```{r}
+# load the new_data and use the tslm_model to forecast 
+forecasts <- forecast(tslm_model, new_data = future_data)
+kable(print(forecasts))
+print(forecasts$.mean)
+```
+
+
+# rolling window forecasting
+```{r}
+# Parameters
+window_size <- 120         # Example window size
+forecast_horizon <- 1      # Forecast horizon: for the next month
+forecasts_list1 <- list()  # for saving the results in each loop
+forecasts_list2 <- list()  # for saving the results in each loop
+
+# Perform rolling window forecasts
+# the last regression in the loop uses data up to T - h
+for (i in 1:(nrow(new_tsibble) - forecast_horizon -  (window_size-1))) {
+  # start_index, end_index are the slicing indexes for training
+  start_index <- i
+  end_index <- start_index + window_size - 1
+  data_win <- new_tsibble |> slice(start_index:end_index)  
+  # Fit the linear regression models
+  # model1 
+  tslm_model1 <- data_win |> model(TSLM(ur ~ ur_1 + ln_cpi_1 + r_1 ))
+  #report(tslm_model1)
+  # model2 
+  tslm_model2 <- data_win |> model(TSLM(ur ~ ur_1 + ln_cpi_1 + ln_ip_1 ))
+  #report(tslm_model2)
+  
+  # Prepare newdata for predictions
+  future_data1 = new_data(data_win, 1) |>
+    mutate(
+      ur_1 = data_win$ur[window_size],
+      ln_cpi_1 = data_win$ln_cpi[window_size],
+      r_1 = data_win$r[window_size]
+    )
+  future_data2 = new_data(data_win, 1) |>
+    mutate(
+      ur_1 = data_win$ur[window_size],
+      ln_cpi_1 = data_win$ln_cpi[window_size],
+      ln_ip_1 = data_win$ln_ip[window_size]
+    )
+
+  # Generate forecasts
+  forecasts1 <- forecast(tslm_model1, new_data = future_data1)
+  forecasts2 <- forecast(tslm_model2, new_data = future_data2)
+  
+  forecasts_list1[i] <-forecasts1$.mean
+  forecasts_list2[i] <-forecasts2$.mean
+  # print(slice(data_win,120:120))  # print the last row of the data_win to verify the window
+}
+
+
+```
+
+
+## forecast results
+```{r}
+# Comparing forecasts
+rolling_forecasts_a <- do.call(rbind, forecasts_list1) # convert to matrix
+rolling_forecasts_b <- do.call(rbind, forecasts_list2)
+eval_subsample <- slice(new_tsibble, window_size+1:nrow(new_tsibble) ) |>
+  mutate(
+    fc1 = rolling_forecasts_a,
+    fc2 = rolling_forecasts_b,
+    err1 = ur - fc1, # take difference of true value and estimated value 
+    err2 = ur - fc2
+  )
+mse1 <- mean(eval_subsample$err1^2) # get the mean squared error
+mse2 <- mean(eval_subsample$err2^2)
+print(mse1)
+print(mse2)
+print(mse2/mse1)
+```
+
+
+## plot forecasts and true values 
+```{r}
+eval_subsample|>
+  ggplot(aes(x = date)) +
+  geom_line(aes(y = ur), colour = "black") +
+  geom_line(aes(y = fc1), colour = "blue") +
+  geom_line(aes(y = fc2), colour = "#D55E00")
+```
+
+## plot forecast errors
+```{r}
+eval_subsample|>
+  ggplot(aes(x = date)) +
+  geom_line(aes(y = err1), colour = "blue") +
+  geom_line(aes(y = err2), colour = "#D55E00")
+
+```
